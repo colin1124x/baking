@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title></title>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+        <style>
+            #sel_commonly{width:95%;min-height:300px;}
+            fieldset{width:40%; float: left; border: none;}
+            fieldset:nth-child(1){
+                width: 10%;
+            }
+            textarea{width:100%; min-height:300px;}
+            hr{
+                clear: both;
+                width: 100%;
+                border: 1px solid #999;
+                border-bottom: none;
+                border-left: none;
+                border-right: none;
+            }
+            p{font-size: 11px; color:#666; line-height: 1.8em;}
+            em{color: #633; font-size: 1.5em; font-style: normal; font-weight: bold;}
+            h1,h2,h3,h4,h5,h6{ margin-bottom: 0.5em;}
+            b{color: #856;}
+            #copy{
+                clear: both;
+                text-align: center;
+                font-size: 9px;
+                color: #999;
+                border-top: 1px solid #CCC;
+            }
+        </style>
+    </head>
+    <body>
+        <fieldset>
+            <select id="sel_commonly" multiple="multiple">
+            </select>
+            <button id="btn_commonly">&Gg;</button>
+        </fieldset>
+        <fieldset>
+            <legend>要轉換的資料</legend>
+            <label>耗損率:<input id="depletion" value="0.05" /></label>
+            <label>啟用耗損<input type="checkbox" id="check_depletion" /></label>
+            <label style="display: none">啟用單價<input type="checkbox" id="check_price" /></label>
+            <textarea id="source"></textarea>
+        </fieldset>
+        <fieldset>
+            <legend>轉換結果</legend>
+            <pre id="result"></pre>
+        </fieldset>
+        
+        <div id="copy">2013/04/07 &COPY; colin</div>
+        
+        <button id="transfer">轉換</button>
+        
+        <h6>使用方式</h6>
+        <p>
+            1) 所有材料用換行或','隔開<br />
+            2) 將確定重量或百分比的材料用 #100% 或 #80g 標記 例如 <em>麵粉100%#500g</em><br />
+            3) 重量統一使用英文小寫字母 g(公克) 標記
+        </p>
+        <h6>備註</h6>
+        <p>
+            全脂牛奶或鮮奶<br />
+            1杯含固形物(奶粉)4大匙(28克)<br />
+            脫脂牛奶或鮮奶<br />
+            1杯含固形物(奶粉)3大匙(21克)<br />
+            奶水(蒸發奶)<br />
+            1杯含固形物(奶粉)8大匙(56克)<br />
+            速發酵母1茶匙=約2.5-3g<br />
+            鹽1茶匙=5g<br />
+            細砂糖1大匙=15g<br />
+            奶粉1大匙=7g
+        </p>
+    <script type="text/javascript" src="js/jquery.js"></script>
+    <script type="text/javascript" src="js/cookie.js"></script>
+    <script type="text/javascript" src="js/commonly.js"></script>
+    <script>
+
+    (function(){
+
+        function array_map(callback, arr) {
+            if ('length' in arr) {
+                var collection = [];
+                for (var i=0, L=arr.length; i<L; i++) {
+                    var item = callback.call(arr[i], i);
+                    if (false === item) {
+                        return;
+                    } else {
+                        collection.push(item);
+                    }
+                }
+            } else {
+                var collection = {};
+                for (var i in arr) {
+                    var item = callback.call(arr[i], i);
+                    if (false === item) {
+                        return;
+                    } else {
+                        collection[i] = item;
+                    }
+                }
+            }
+
+            return collection;
+        }
+        function collect(str, target) {
+            return array_map(function(i){
+                var s = this.replace(/#[^,]*/g, '');
+                return s;
+            }, str.split(/[,\n]/));
+        }
+        function getTarget(str) {
+            return str.match(/\s*([^,\s]+?)\s*(\d+(?:\.\d+){0,1})([%g])\s*#\s*(\d+(?:\.\d+){0,1})([%g])/);
+        }
+
+        function eachItem(callback, arr) {
+            array_map(function(){
+                var m = null;
+                if (m = this.match(/([^\s]+?)\s*(\d+(?:\.\d+){0,1})\s*[%g]/)) {
+                    callback(m[1], m[2]);
+                }
+            }, arr);
+        }
+
+        var cookie = new Cookie('baking'),
+        $source = $('#source'),
+        $result = $('#result'),
+        $expectation_weight = $('<label>預計實重: <input />(近似值)</label>').appendTo($result.parent()).hide(),
+        $transfer = $('#transfer'),
+        $depletion = $('#depletion'),
+        $sel_commonly = $('#sel_commonly'),
+        $check_depletion = $('#check_depletion'),
+        $check_price = $('#check_price'),
+        _opt = document.createElement('option');
+
+        $check_depletion
+            .attr('checked', '1'==cookie.get('depletion'))
+            .bind('click', function(){
+                cookie.set('depletion', this.checked?1:0).store();
+            });
+            
+        $check_price
+            .attr('checked', '1'==cookie.get('price'))
+            .bind('click', function(){
+                cookie.set('price', this.checked?1:0).store();
+            });
+            
+        $source.val(cookie.get('source'));
+        $source.bind('blur', function(){
+            cookie.set('source', this.value).store();
+        });
+        array_map(function(name){
+            var _node = _opt.cloneNode(false);
+            _node.innerHTML = name;
+            $sel_commonly.append(_node);
+        }, commonly);
+
+        $('#btn_commonly').bind('click', function(){
+            array_map(function(){
+                if (this.selected) {
+                    $source.val($source.val() + "\n" + this.innerHTML);
+                }
+            }, $sel_commonly.children());
+        });
+        
+        $expectation_weight.find('input').bind('change', function(){
+            if ($transfer.data('details') && $transfer.data('main') && $transfer.data('all_p')) {
+                var new_all_weight = (parseFloat(this.value, 10)||0).toFixed(2);
+                var new_weight = (new_all_weight / $transfer.data('all_p')) * $transfer.data('details')[$transfer.data('main')]['p'];
+                $source.val($source.val().replace(/#\d+(\.\d+)?/, '#'+new_weight.toFixed(2)));
+                $transfer.click();
+            }
+        });
+        
+        $transfer.bind('click', function(){
+            var v = $source.val(),
+            _depletion = parseFloat($depletion.val(), 10)|| 0,
+            enable_depletion = $check_depletion.attr('checked'),
+            enable_price = $check_price.attr('checked'),
+            m = getTarget(v),
+            collection = collect(v),
+            details = {},//存放實際重量與百分比{g: 重量, p: 百分比}
+            new_vals = {},//每個item的結果字串
+            all_weight = 0,
+            all_p = 0,
+            _all_gold1 = 0;//淨重金額
+            
+            $transfer.data('details', details);
+            $expectation_weight.hide();
+            
+            if (m) {
+                if (m[3]==[m[5]]) {//單位相同不需換算
+
+                    alert('單位相同不需換算');
+
+                } else if ('%' == m[3]) {//百分比換算公克
+
+                    var _all_g = (m[4]/(m[2]/100));
+
+                    eachItem(function(name, _p){
+                        
+                        var price = commonly[name]? commonly[name]['g']/(commonly[name]['w']||1) : 0;
+                        var _g = Math.round(((_p /100) * _all_g));
+                        var gold = (_g * price).toFixed(2);
+                        _all_gold1 += parseFloat(gold);
+                        details[name] = {
+                            'g': _g,
+                            'p': _p
+                        };
+                        new_vals[name] = _g + 'g'+ (enable_price?' ($'+gold+')':'');
+                        all_weight += _g;
+                        all_p += parseFloat(_p);
+                        
+                    }, collection);
+                    
+                    $expectation_weight.show();
+
+                } else if ('g' == m[3]) {//公克換算百分比
+
+                    var _x = (m[2]/(m[4]/100));
+
+                    eachItem(function(name, _g){
+                        
+                        var price = commonly[name]? commonly[name]['g']/(commonly[name]['w']||1) : 0;
+                        var _p = (_g / _x * 100).toFixed(2);
+                        var gold = (_g * price).toFixed(2);
+                        _all_gold1 += parseFloat(gold);
+                        details[name] = {
+                            'g': _g,
+                            'p': _p
+                        };
+                        new_vals[name] = _p + '%'+ (enable_price?' ($'+gold+')':'');
+                        all_weight += parseFloat(_g);
+                        all_p += parseFloat(_p);
+                        
+                    }, collection);
+                }
+            }
+            
+            $transfer.data('depletion', _depletion);//耗損
+            $transfer.data('all_p', all_p);//總百分比
+            $transfer.data('main', m[1]);//主材料
+            
+            $result.empty();
+            var _collection = [];
+            var _all_depletion = 0;
+            var _all_gold2 = 0;//含耗損金額
+            for (var name in new_vals) {
+                var _v = name + ' ' + new_vals[name],
+                    _m = null,
+                    _price = commonly[name]? commonly[name]['g']/(commonly[name]['w']||1) : 0;
+                if (_m = new_vals[name].match(/^(\d+(?:\.\d+)?)g/)) {
+                    var _rd = (_m[1] /(1 - _depletion)).toFixed(2);
+                    var _gold = (_price * (_m[1] /(1 - _depletion))).toFixed(2);
+                    var others = [];
+                    enable_price && others.push('$'+_gold);
+                    enable_depletion && others.push(_rd + 'g');
+                    if (enable_depletion) {
+                        _v += ' / <b>含耗損 ' + others.join(', ') + '</b>';
+                    }
+                    
+                    _all_depletion += parseFloat(_rd);
+                    _all_gold2 += parseFloat(_gold);
+                }
+                _collection.push(_v);
+            }
+            var contents = _collection.join("\n")
+            + '<hr />總百分比:' + all_p.toFixed(2) + '%'
+            + '<hr />總重量:' + all_weight + 'g' + (_all_depletion && enable_depletion?' / <b>' + _all_depletion.toFixed(2) + 'g (含耗損)</b>':'')
+            + (enable_price?'<hr />總金額:$' + _all_gold1 + (_all_depletion && enable_depletion?' / <b>$' + _all_gold2 + ' (含耗損)</b>':''):'');
+            $expectation_weight.find('input').val(all_weight);
+            $result.html(contents);
+        });
+     })();
+
+     </script>
+    </body>
+</html>
+
